@@ -4,6 +4,9 @@ import * as bodySegmentation from "@tensorflow-models/body-segmentation";
 import "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-converter";
 import "@tensorflow/tfjs-backend-webgl";
+import "@mediapipe/selfie_segmentation";
+import * as poseDetection from "@tensorflow-models/pose-detection";
+import "@mediapipe/pose";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -25,11 +28,12 @@ export default function Home() {
     setFile(file);
   };
 
-  const handleRemoveBackground = async () => {
-    if (!file) return;
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
-    img.onload = async () => {
+  async function performSegmentation(
+    model: "BodyPix" | "MediaPipeSelfieSegmentation" | "BlazePose",
+    img: HTMLImageElement
+  ) {
+    if (model === "BodyPix") {
+      // body pix
       const model = bodySegmentation.SupportedModels.BodyPix;
       const segmenterConfig: bodySegmentation.BodyPixModelConfig = {
         // architecture: "MobileNetV1",
@@ -51,15 +55,16 @@ export default function Home() {
       };
 
       const people = await segmenter.segmentPeople(img, segmentationConfig);
-      const coloredPartImage = await bodySegmentation.toBinaryMask(people);
-      const opacity = 0.7;
+      const coloredPartImage = await bodySegmentation.toBinaryMask(
+        people,
+        { r: 0, g: 0, b: 0, a: 0 },
+        { r: 255, g: 255, b: 255, a: 255 }
+      );
+      const opacity = 1;
       const flipHorizontal = false;
       const maskBlurAmount = 0;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      // Draw the mask image on top of the original image onto a canvas.
-      // The colored part image will be drawn semi-transparent, with an opacity of
-      // 0.7, allowing for the original image to be visible under.
       bodySegmentation.drawMask(
         canvas,
         img,
@@ -68,6 +73,101 @@ export default function Home() {
         maskBlurAmount,
         flipHorizontal
       );
+    }
+
+    if (model === "MediaPipeSelfieSegmentation") {
+      // selfie segmentation
+      const segmenterConfig: bodySegmentation.MediaPipeSelfieSegmentationMediaPipeModelConfig =
+        {
+          runtime: "mediapipe", // or 'tfjs'
+          solutionPath:
+            "https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation",
+          modelType: "general",
+        };
+
+      const segmenter = await bodySegmentation.createSegmenter(
+        bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+        segmenterConfig
+      );
+
+      const segmentation = await segmenter.segmentPeople(img);
+
+      const backgroundColor = { r: 255, g: 255, b: 255, a: 255 };
+      const foregroundColor = { r: 0, g: 0, b: 0, a: 0 };
+
+      const backgroundDarkeningMask = await bodySegmentation.toBinaryMask(
+        segmentation,
+        foregroundColor,
+        backgroundColor
+      );
+
+      const opacity = 1;
+      const maskBlurAmount = 0;
+      const flipHorizontal = false;
+
+      await bodySegmentation.drawMask(
+        canvasRef.current!,
+        img,
+        backgroundDarkeningMask,
+        opacity,
+        maskBlurAmount,
+        flipHorizontal
+      );
+    }
+
+    if (model === "BlazePose") {
+      // blazepose
+      const model = poseDetection.SupportedModels.BlazePose;
+      const detectorConfig: poseDetection.BlazePoseMediaPipeModelConfig = {
+        runtime: "mediapipe",
+        solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/pose",
+        enableSmoothing: false,
+        enableSegmentation: true,
+        modelType: "heavy",
+      };
+      const detector = await poseDetection.createDetector(
+        model,
+        detectorConfig
+      );
+      const estimationConfig: poseDetection.BlazePoseMediaPipeEstimationConfig =
+        { flipHorizontal: false };
+      const poses = await detector.estimatePoses(img, estimationConfig);
+      const segmentation = poses[0].segmentation;
+      if (!segmentation) return;
+      const backgroundColor = { r: 255, g: 255, b: 255, a: 255 };
+      const foregroundColor = { r: 0, g: 0, b: 0, a: 0 };
+
+      const backgroundDarkeningMask = await bodySegmentation.toBinaryMask(
+        segmentation,
+        foregroundColor,
+        backgroundColor
+      );
+
+      const opacity = 1;
+      const maskBlurAmount = 0;
+      const flipHorizontal = false;
+      // Draw the mask onto the image on a canvas.  With opacity set to 0.7 and
+      // maskBlurAmount set to 3, this will darken the background and blur the
+      // darkened background's edge.
+      await bodySegmentation.drawMask(
+        canvasRef.current!,
+        img,
+        backgroundDarkeningMask,
+        opacity,
+        maskBlurAmount,
+        flipHorizontal
+      );
+    }
+  }
+
+  const handleRemoveBackground = async () => {
+    if (!file) return;
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = async () => {
+      // await performSegmentation("BlazePose", img);
+      // await performSegmentation("BodyPix", img);
+      await performSegmentation("MediaPipeSelfieSegmentation", img);
     };
   };
 
