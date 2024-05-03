@@ -2,7 +2,9 @@
 import { LeopardWorker } from "@picovoice/leopard-web";
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Spin, Upload, UploadProps, message } from "antd";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 const accessKey = "cxHI6rh71yq2uTlxj+FzOZutz5myvjDsvSpoMcC4J6RG4XWgAtpGpw==";
 const leopardModel = {
@@ -12,46 +14,108 @@ function MP3ToText() {
   const [file, setFile] = useState<File | null>(null);
   const [transcription, setTranscription] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const ffmpegRef = useRef(new FFmpeg());
+  const isFfmpegLoaded = useRef(false);
+
+  const loadFfmpeg = async () => {
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+    const ffmpeg = ffmpegRef.current;
+    ffmpeg.on("log", ({ message }) => {
+      console.log(message);
+    });
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(
+        `${baseURL}/ffmpeg-core.wasm`,
+        "application/wasm"
+      ),
+    });
+    isFfmpegLoaded.current = true;
+  };
+  function uint8ToUint16(uint8Array: Uint8Array) {
+    const uint16Array = new Int16Array(uint8Array.length / 2);
+    for (let i = 0; i < uint8Array.length; i += 2) {
+      const uint16Value = (uint8Array[i] << 8) | uint8Array[i + 1];
+      uint16Array[i / 2] = uint16Value;
+    }
+    return uint16Array;
+  }
 
   async function transcribe() {
     if (!file) return;
     setLoading(true);
-    let reader = new FileReader();
-    reader.onload = async function () {
-      const audioContext = new window.AudioContext({ sampleRate: 16000 });
-      const wavBytes = reader.result as ArrayBuffer;
-      audioContext.decodeAudioData(wavBytes, async (audioBuffer) => {
-        try {
-          const f32PCM = audioBuffer.getChannelData(0);
-          const i16PCM = new Int16Array(f32PCM.length);
+    if (!isFfmpegLoaded.current) await loadFfmpeg();
+    const ffmpeg = ffmpegRef.current;
+    await ffmpeg.writeFile("input.mp4", await fetchFile(file));
+    // ffmpeg -i input.flv -f s16le -acodec pcm_s16le output.raw
+    // ffmpeg -y  -i input.mp4  -acodec pcm_s16le -f s16le -ac 1 -ar 16000 output.pcm
+    // await ffmpeg.exec([
+    //   "-i",
+    //   "input.mp4",
+    //   "-acodec",
+    //   "pcm_s16le",
+    //   "-f",
+    //   "s16le",
+    //   "-ac",
+    //   "1",
+    //   "-ar",
+    //   "16000",
+    //   "output.pcm",
+    // ]);
+    await ffmpeg.exec([
+      "-i",
+      "input.mp4",
+      "-acodec",
+      "pcm_s16le",
+      "-f",
+      "s16le",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "output.pcm",
+    ]);
+    const data = (await ffmpeg.readFile("output.pcm")) as Uint8Array;
+    console.log(data);
+    const int16Array = new Int16Array(data.buffer);
+    console.log(int16Array);
 
-          const INT16_MAX = 32767;
-          const INT16_MIN = -32768;
-          i16PCM.set(
-            f32PCM.map((f) => {
-              let i = Math.trunc(f * INT16_MAX);
-              if (f > INT16_MAX) i = INT16_MAX;
-              if (f < INT16_MIN) i = INT16_MIN;
-              return i;
-            })
-          );
-          const leopard = await LeopardWorker.create(accessKey, leopardModel, {
-            enableAutomaticPunctuation: true,
-            enableDiarization: true,
-          });
-          const { transcript } = await leopard.process(i16PCM, {
-            transfer: true,
-          });
-          setTranscription(transcript);
-        } catch (error) {
-          console.log(error);
-          message.error("Failed to transcribe.");
-        } finally {
-          setLoading(false);
-        }
+    // let reader = new FileReader();
+    // reader.onload = async function () {
+    // const audioContext = new window.AudioContext({ sampleRate: 16000 });
+    // const wavBytes = reader.result as ArrayBuffer;
+    // audioContext.decodeAudioData(wavBytes, async (audioBuffer) => {
+    try {
+      // const f32PCM = audioBuffer.getChannelData(0);
+      // const i16PCM = new Int16Array(f32PCM.length);
+
+      // const INT16_MAX = 32767;
+      // const INT16_MIN = -32768;
+      // i16PCM.set(
+      //   f32PCM.map((f) => {
+      //     let i = Math.trunc(f * INT16_MAX);
+      //     if (f > INT16_MAX) i = INT16_MAX;
+      //     if (f < INT16_MIN) i = INT16_MIN;
+      //     return i;
+      //   })
+      // );
+      const leopard = await LeopardWorker.create(accessKey, leopardModel, {
+        enableAutomaticPunctuation: true,
+        enableDiarization: true,
       });
-    };
-    reader.readAsArrayBuffer(file);
+      const { transcript } = await leopard.process(int16Array, {
+        transfer: true,
+      });
+      setTranscription(transcript);
+    } catch (error) {
+      console.log(error);
+      message.error("Failed to transcribe.");
+    } finally {
+      setLoading(false);
+    }
+    // });
+    // };
+    // reader.readAsArrayBuffer(file);
   }
 
   const props: UploadProps = {
