@@ -18,57 +18,69 @@ function MP3ToText() {
     setLoading(true);
     let reader = new FileReader();
     reader.onload = async function () {
-      const mediaSource = new MediaSource();
-      const audioElement = new Audio();
-      audioElement.src = URL.createObjectURL(mediaSource);
-
-      mediaSource.addEventListener("sourceopen", async function () {
-        console.log("MediaSource opened.");
-        const sourceBuffer = mediaSource.addSourceBuffer(
-          'audio/mp4; codecs="mp4a.40.2"'
-        );
-
-        const wavBytes = reader.result as ArrayBuffer;
-        const chunkSize = 1024 * 1024; // Define your desired chunk size
-        let offset = 0;
-
-        while (offset < wavBytes.byteLength) {
-          const chunk = wavBytes.slice(offset, offset + chunkSize);
-          sourceBuffer.appendBuffer(chunk);
-          offset += chunkSize;
+      const audioContext = new window.AudioContext({ sampleRate: 16000 });
+      const wavBytes = reader.result as ArrayBuffer;
+      const worker = new Worker("ffmpeg-worker-mp4.js");
+      worker.onmessage = function (e) {
+        // I need to get decoded audio data
+        // ffmpeg -i input.mp4 -vn -acodec copy output-audio.aac
+        const msg = e.data;
+        switch (msg.type) {
+          case "ready":
+            worker.postMessage({
+              type: "run",
+              arguments: [
+                "-i",
+                "input.mp4",
+                "-vn",
+                "-acodec",
+                "copy",
+                "output-audio.mp4a",
+              ],
+              MEMFS: [{ name: "input.mp4", data: wavBytes }],
+            });
+            break;
+          case "stdout":
+            console.log(msg.data);
+            break;
+          case "stderr":
+            console.log(msg.data);
+            break;
+          case "done":
+            console.log(msg.data);
+            break;
         }
+      };
+      // audioContext.decodeAudioData(wavBytes, async (audioBuffer) => {
+      // try {
+      //   const f32PCM = audioBuffer.getChannelData(0);
+      //   const i16PCM = new Int16Array(f32PCM.length);
 
-        sourceBuffer.addEventListener("updateend", async function () {
-          try {
-            console.log("Transcribing...");
-            const leopard = await LeopardWorker.create(
-              accessKey,
-              leopardModel,
-              {
-                enableAutomaticPunctuation: true,
-                enableDiarization: true,
-              }
-            );
-            const { transcript } = await leopard.process(
-              audioElement.captureStream(),
-              {
-                transfer: true,
-              }
-            );
-            console.log("Transcription:", transcript);
-            setTranscription(transcript);
-          } catch (error) {
-            console.log(error);
-            message.error("Failed to transcribe.");
-          } finally {
-            setLoading(false);
-          }
-        });
-      });
-
-      mediaSource.addEventListener("error", function (e) {
-        console.log("MediaSource error:", e);
-      });
+      //   const INT16_MAX = 32767;
+      //   const INT16_MIN = -32768;
+      //   i16PCM.set(
+      //     f32PCM.map((f) => {
+      //       let i = Math.trunc(f * INT16_MAX);
+      //       if (f > INT16_MAX) i = INT16_MAX;
+      //       if (f < INT16_MIN) i = INT16_MIN;
+      //       return i;
+      //     })
+      //   );
+      //   const leopard = await LeopardWorker.create(accessKey, leopardModel, {
+      //     enableAutomaticPunctuation: true,
+      //     enableDiarization: true,
+      //   });
+      //   const { transcript } = await leopard.process(i16PCM, {
+      //     transfer: true,
+      //   });
+      //   setTranscription(transcript);
+      // } catch (error) {
+      //   console.log(error);
+      //   message.error("Failed to transcribe.");
+      // } finally {
+      //   setLoading(false);
+      // }
+      // });
     };
     reader.readAsArrayBuffer(file);
   }
@@ -80,6 +92,8 @@ function MP3ToText() {
     disabled: loading,
     showUploadList: false,
   };
+
+  console.log(transcription);
 
   return (
     <div className="flex justify-start items-center flex-col w-[100vw] h-[100vh] mt-10">

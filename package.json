@@ -9,9 +9,14 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "@picovoice/leopard-web": "^2.0.1",
+    "@soundcut/decode-audio-data-fast": "^2.0.1",
     "add": "^2.0.6",
     "antd": "^5.16.4",
+    "audio-decode": "^2.2.0",
+    "ffmpeg.js": "^4.2.9003",
     "next": "14.2.2",
     "react": "^18",
     "react-dom": "^18",
