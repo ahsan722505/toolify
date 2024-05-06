@@ -4,7 +4,7 @@ import { UploadOutlined } from "@ant-design/icons";
 import { Button, Spin, Upload, UploadProps, message } from "antd";
 import React, { useState } from "react";
 
-const accessKey = "cxHI6rh71yq2uTlxj+FzOZutz5myvjDsvSpoMcC4J6RG4XWgAtpGpw==";
+const accessKey = process.env.NEXT_PUBLIC_LEOPARD_ACCESS_KEY || "";
 const leopardModel = {
   publicPath: "/leopard_params.pv",
 };
