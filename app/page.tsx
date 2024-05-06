@@ -6,7 +6,7 @@ import React, { useRef, useState } from "react";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
-const accessKey = "cxHI6rh71yq2uTlxj+FzOZutz5myvjDsvSpoMcC4J6RG4XWgAtpGpw==";
+const accessKey = process.env.NEXT_PUBLIC_LEOPARD_ACCESS_KEY || "";
 const leopardModel = {
   publicPath: "/leopard_params.pv",
 };
