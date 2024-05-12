@@ -1,4 +1,4 @@
-This repo contains two tools.
+This repo contains two tools:
 
 1. VIDEO TRANSCRIPTION: [Demo](https://toolify-seven.vercel.app/) A tool to create video transcriptions. This tool first extracts raw PCM
 data from any audio/video file using web audio api and then sends this data to a machine learning model for speech to text. All of this
